@@ -712,6 +712,83 @@ fn stroke_border_radius(
     }
 }
 
+// TODO Arc
+
+pub fn fill_arc(
+    center: Point,
+    radius: f32,
+    rotation: Angle,
+    angle: Angle,
+    options: &FillOptions,
+    output: &mut dyn GeometryBuilder<FillVertex>
+) -> TessellationResult {
+    output.begin_geometry();
+
+    if angle.radians >= 2. * PI {
+        return Ok(fill_circle(center, radius, options, output)?);
+    }
+
+    let start = vector(rotation.radians.cos(), rotation.radians.sin());
+
+    let end = 
+        if angle.radians > PI {
+            vector((PI+rotation.radians).cos(), (PI+rotation.radians).sin())
+
+        }
+        else{
+            vector(
+                (angle.radians + rotation.radians).cos(), 
+                (angle.radians + rotation.radians).sin())
+        };
+
+    if angle.radians < PI {
+
+        fill_triangle(
+            center, 
+            center + (start * radius), 
+            center + (end  * radius), 
+            options, 
+            output
+        )?;
+    }
+    // This needs some work
+    let arc_len = angle.radians * radius;
+    let step = circle_flattening_step(radius, options.tolerance);
+    let num_segments = (arc_len / step).ceil();
+    let num_recursions = num_segments.log2() as u32;
+       
+    let v = [
+        output.add_vertex(FillVertex {
+            position: center + (start * radius),
+            normal: start
+        })?,
+        output.add_vertex(FillVertex {
+            position: center + (end * radius),
+            normal: end
+        })?
+    ];
+    
+    fill_border_radius(
+        center,
+        (rotation.radians, angle.radians + rotation.radians),
+        radius,
+        v[0],
+        v[1],
+        num_recursions,
+        output
+    )?;
+
+    if angle.radians > PI{
+        let rotation_new =  Angle{radians: rotation.radians + PI};
+        let angle_new = Angle{ radians: angle.radians - PI};
+        fill_arc(center, radius, rotation_new, angle_new, options, output)
+    }
+    else{
+        Ok(output.end_geometry())
+    }
+}
+
+
 /// Tessellate an ellipse.
 pub fn fill_ellipse(
     center: Point,
